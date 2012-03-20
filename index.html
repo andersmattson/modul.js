@@ -6,27 +6,37 @@
 	<meta name="description" content="" />
   	<meta name="keywords" content="" />
 	<meta name="robots" content="" />
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1/jquery.min.js"></script>
 	<script data-main="mods/main" src="modul.js"></script>
 	<script type="text/javascript">
 
 		modul({
 			
-			require: ['mods/test'],
+			extends: ['mods/test'],
+			
+			events: {
+				'init': 'render'
+			},
 			
 			name: 'testfrommain',
+			custom: 'Det gick',
 			
 			init: function() {
-				this.meddelande = 'Det gick';
 				console.log('Init from main with name ' + this.name)
+			},
+			
+			render: function(){
+				$(this.$el).html('Went ok').appendTo('body');
 			}
 		});
 		
-		var mod = modul('testfrommain');
+		var mod = modul('testfrommain', function(){
+			console.log(this.name, this);
+		});
 		
 		setTimeout(function() {
-			console.log(mod.meddelande);
+			console.log('timeout',mod);
 		}, 1000);
-		console.log('end of script');
 	</script>
 </head>
 <body>

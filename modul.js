@@ -74,45 +74,16 @@ var _ = {
 		return args;
 	},
 	
-	normalizeUrl: function(url) {
-		return url.replace(/([\w]+?\/\.\.\/)+/gi, '') + (url.substr(-3) != '.js' ? '.js' : '');
-	},
-	
-	domready: function(fn) {
-
-		var done = false, 
-			top = true,
-			doc = window.document, 
-			root = doc.documentElement,
-			t = !!doc.addEventListener,
-			add = t ? 'addEventListener' : 'attachEvent',
-			rem = t ? 'removeEventListener' : 'detachEvent',
-			pre = t ? '' : 'on',
-			init = function(e) {
-				if (e.type == 'readystatechange' && doc.readyState != 'complete') return;
-				(e.type == 'load' ? window : doc)[rem](pre + e.type, init, false);
-				if (!done && (done = true)) fn.call(window, e.type || e);
-			},
-			poll = function() {
-				try { root.doScroll('left'); } catch(e) { setTimeout(poll, 50); return; }
-				init('poll');
-			};
-	
-		if (doc.readyState == 'complete') fn.call(modul);
-		else {
-			if (doc.createEventObject && root.doScroll) {
-				try { top = !window.frameElement; } catch(e) { }
-				if (top) poll();
-			}
-			doc[add](pre + 'DOMContentLoaded', init, false);
-			doc[add](pre + 'readystatechange', init, false);
-			window[add](pre + 'load', init, false);
-		}
-	
+	xhr: function(u, f, x) {
+		x = this.ActiveXObject;
+		x = new(x ? x : XMLHttpRequest)('Microsoft.XMLHTTP');
+		x.open('GET', u, 1);
+		x.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+		x.onreadystatechange = function() {
+			x.readyState > 3 && f ? f(x.responseText, x) : 0
+		};
+		x.send()
 	}
-	
-	
-	
 	
 };
 
@@ -176,21 +147,23 @@ var Events = {
 	}
 };
 
-var modul = window.modul = function(nm, fn) {
+var modul = window.modul = function(nm, fn, ref) {
+
+	ref = ref || {};
 
 	if(_.is(nm, 'object'))
 		return modul.define(nm);
 	
-	var base = {};
 	modul.require([nm], function() {
-		modul.module(nm, fn);
-		base.meddelande = 'Det gick';
+		modul.module(nm, fn, ref);
 	});
 	
-	return base;
+	return ref;
 }
 
 _.extend(modul, {
+	
+	_domready: false,
 	
 	basepath: '',
 	
@@ -200,39 +173,44 @@ _.extend(modul, {
 		if(!_.is(src, 'array'))
 			src = [src];
 
-		modul._require(src, function() {
+		this._require(src, function() {
 			var unsolved = [];
 
 			_.each(src, function(s){
-				var dep = modul.modules[s].require;
+				var dep = self.modules[s].extends;
 				_.each(dep, function(d) {
-					if(!modul.modules[d])
+					if(!self.modules[d])
 						unsolved.push(d);
 				});
 			});
 			
 			if(unsolved.length)
-				modul.require(unsolved, fn);
+				self.require(unsolved, fn);
 			else
 				fn();
 		});
 	},
 	
 	_require: function(src, fn) {
-		var i = src.length, self = this;
+		var i = src.length, self = this, url;
 
 		_.each(src, function(s) {
 
-			if(modul.modules[s])
+			if(self.modules[s])
 				!(--i) && fn();
 			else {
-				var js = document.createElement('script'); 
-				js.onload = function() {
+				url = self.basepath + s;
+				_.xhr(url.replace(/([\w]+?\/\.\.\/)+/gi, '') + (url.substr(-3) != '.js' ? '.js' : ''), function(t) {
+					self._nextload = s;
+					if ( t && /\S/.test( t ) ) {
+						( window.execScript || function( d ) {
+							window[ "eval" ].call( window, d );
+						} )( t );
+					}
+					self._nextload = null;
+
 					!(--i) && fn();
-				}
-				js.src = _.normalizeUrl(self.basepath + s);
-				js.setAttribute('data-modul', s);
-				document.getElementsByTagName('head')[0].appendChild(js);
+				});
 			}
 		});
 	},
@@ -245,6 +223,9 @@ _.extend(modul, {
 		
 		var self = this;
 		
+		if(this._nextload)
+			op.name = this._nextload;
+		
 		if(!op.name) {
 			_.each(_.slice(document.getElementsByTagName("head")[0].childNodes).reverse(), function(s) {
 				if(s.nodeName && s.nodeName.toLowerCase() == 'script' && s.getAttribute('data-modul') && !s.getAttribute('data-defined')) {
@@ -255,7 +236,7 @@ _.extend(modul, {
 			});
 		}
 		
-		console.log(op.name, op);
+		console.log(op.name, this._nextload, op);
 		
 		if(this.modules[op.name])
 			op.name += _.uid();
@@ -268,31 +249,33 @@ _.extend(modul, {
 	inherit: function(nm, req) {
 		var base = {}, self = this;
 		
-		_.each(self.modules[nm].require, function( r ) {
+		_.each(this.modules[nm].extends, function( r ) {
 			_.extend(base, self.inherit(r));
 		});
 		
 		return _.extend(base, _.clone(this.modules[nm]));
 	},
 	
-	module: function(nm, fn) {
+	module: function(nm, fn, ref) {
 		
 		if(this.modules[nm].single && this.instances[nm].length) {
-			fn && fn.apply(this.instances[nm]);
-			return this.instances[nm];
+			fn && fn.apply(this.instances[nm][0]);
+			return this.instances[nm][0];
 		}
 		
-		var op = this.inherit(nm, this.modules[nm]),
+		var ref = ref || {},
 			self = this, 
 			evnt,
 			args = _.slice(arguments, 1);
 		
+		_.extend(ref, this.inherit(nm, this.modules[nm]));
+		
 		// Convenience methods to handle DOM attachment/detachment
-		op = _.extend({}, op, _.clone(Events), {
+		_.extend(ref, _.clone(Events), {
 			
 			uid: _.uid(),
 			
-			$el: document.createElement(op.tagName || 'div'),
+			$el: document.createElement(ref.tagName || 'div'),
 			
 			appendTo: function(el) {
 				this.$el.appendTo(el);
@@ -303,81 +286,93 @@ _.extend(modul, {
 			}
 		});
 		
-		_.bindAll(op);
+		_.bindAll(ref);
 
 		// Attach events
-		if(op.events) {
-			_.each(op.events, function(fn, ev) {
+		if(ref.events) {
+			_.each(ref.events, function(fn, ev) {
 				
 				if(!fn)
 					return;
 					
-				if(modul.is(fn, 'string'))
-					fn = op[fn];
+				if(_.is(fn, 'string'))
+					fn = ref[fn];
 				
 				// Standard DOM events, might be a nicer way of handling this.
-				if(ev.match(/^(on)?((dbl|double)?click|mouse(over|out|up|down|enter|leave|move)|key(down|press|up)|blur|focus(in|out)?|change|resize|scroll)/g)) {
+				if(ev.match(/^(on)?((dbl|double)?click|mouse(over|out|up|down|enter|leave|move)|key(down|press|up)|blur|focus(in|out)?|change|resize|scroll)/g) && typeof jQuery != 'undefined') {
 					evnt = ev.split(' ');
 
 					// delegated to child elements
 					if(evnt.length == 2)
-						op.$el.on(evnt[0], evnt[1], fn);
+						jQuery(ref.$el).on(evnt[0], evnt[1], fn);
 					// direct
 					else
-						op.$el.on(evnt[0], fn);
+						jQuery(ref.$el).on(evnt[0], fn);
 				}
 				// Custom events
 				else
-					op.on(ev, fn);
+					ref.on(ev, fn);
 			});
 		}
 
-		if(op.receivers) {
-			_.each(op.receivers, function(fn, ev) {
+		if(ref.receivers) {
+			_.each(ref.receivers, function(fn, ev) {
 
 				if(!fn)
 					return;
 					
 				if(_.is(fn, 'string'))
-					fn = op[fn];
-				op.receive(ev, fn);
+					fn = ref[fn];
+				ref.receive(ev, fn);
 			});
 		}
 		
 		if(!this.instances[nm])
 			this.instances[nm] = [];
 
-		this.instances[nm].push(op);
+		this.instances[nm].push(ref);
 		
-		op.init && op.init.apply(op);
+		ref.init && ref.init.apply(ref);
 		
-		fn && fn.apply(op);
+		ref.trigger('init');
+		
+		fn && fn.apply(ref);
 			
-		return op;
-	},
-	
-	error: function(err) {
-		this.trigger('error',err);
+		return ref;
 	}
-	
 });
 
 _.extend(modul, _.clone(Events));
-//_.bindAll(modul);
 
 // Export _ for testing
 window._ = _;
 
-// Figure out the modul basepath
+(function (fn) {
+	if ( window.addEventListener ) {
+		document.addEventListener( 'DOMContentLoaded', function(){ fn(); }, false );
+	} else {
+		(function(){
+			if ( ! document.uniqueID && document.expando ) return;
+			var tmp = document.createElement( 'document:ready' );
+			try {
+				tmp.doScroll( 'left' );
+				fn();
+			} catch ( err ) {
+				setTimeout( arguments.callee, 0 );
+			}
+		})();
+	}
+})(function () {
+	modul._domready = true;
+	modul.trigger('domready').emit('domready');
+});
+
+// Figure out the modul basepath and check for main modul.
 _.each(_.slice(document.getElementsByTagName('script')), function(scr){
 	if(scr.src && scr.src.match(/modul\.js$/)) {
 		modul.basepath = scr.src.replace(/modul\.js$/, '');
-		if(scr.getAttribute('data-main')) {
-			_.domready(function(){
-				console.log('domready');
-				modul(scr.getAttribute('data-main'));
-			})
-		}
+		if(scr.getAttribute('data-main'))
+			modul(scr.getAttribute('data-main'));
 		return false;
 	}
 });

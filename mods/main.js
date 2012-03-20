@@ -1,6 +1,6 @@
 modul({
 	
-	require: ['mods/test2'],
+	extends: ['mods/test2'],
 	
 	msg: 'this is main',
 	

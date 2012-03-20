@@ -1,6 +1,6 @@
 modul({
 
-	require: ['mods/test'],
+	extends: ['mods/test'],
 	
 	test2: 'test2.js'
 });
