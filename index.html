@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="">
+<head>
+  <meta charset="utf-8">
+	<title></title>
+	<meta name="description" content="" />
+  	<meta name="keywords" content="" />
+	<meta name="robots" content="" />
+	<script data-main="mods/main" src="modul.js"></script>
+	<script type="text/javascript">
+
+		modul({
+			
+			require: ['mods/test'],
+			
+			name: 'testfrommain',
+			
+			init: function() {
+				this.meddelande = 'Det gick';
+				console.log('Init from main with name ' + this.name)
+			}
+		});
+		
+		var mod = modul('testfrommain');
+		
+		setTimeout(function() {
+			console.log(mod.meddelande);
+		}, 1000);
+		console.log('end of script');
+	</script>
+</head>
+<body>
+	
+</body>
+</html>
