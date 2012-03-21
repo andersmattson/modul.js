@@ -12,31 +12,43 @@
 
 		modul({
 			
-			extends: ['mods/test'],
+			inherits: ['mods/test'],
 			
 			events: {
 				'init': 'render'
+			},
+			
+			receivers: {
+				'route': function(url){
+					$('<div />').html('route to '+url).appendTo("body");
+				}
 			},
 			
 			name: 'testfrommain',
 			custom: 'Det gick',
 			
 			init: function() {
-				console.log('Init from main with name ' + this.name)
+				modul.log('Init from main with name ' + this.name)
 			},
 			
-			render: function(){
-				$(this.$el).html('Went ok').appendTo('body');
+			render: function() {
+				$(function(){
+					$(this.$el).html('Went ok, <a href="#go">go</a>').appendTo('body');
+				});
 			}
 		});
 		
 		var mod = modul('testfrommain', function(){
-			console.log(this.name, this);
+			modul.log(this.name, this);
 		});
 		
 		setTimeout(function() {
-			console.log('timeout',mod);
+			modul.log('timeout',mod);
 		}, 1000);
+		
+		modul.receive('log', function(){
+			$('<div />').html('log: '+ _.slice(arguments).join()).appendTo("body");
+		});
 	</script>
 </head>
 <body>

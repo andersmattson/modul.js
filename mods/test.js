@@ -1,15 +1,15 @@
 modul({
 
 	init: function(){
-		console.log('Initiated', this.name);	
+		modul.log('Initiated', this.name);	
 	},
 
 	receivers: {
 		'tjoho': 'tjoho'	
 	},
 	
-	tjoho: function(){
-		console.log('tjoho from '+this.name);
+	tjoho: function(v){
+		modul.log('tjoho from '+this.name+': '+v);
 	},
 
 	test: 'test.js'

@@ -8,18 +8,32 @@ var _ = {
 	},
 	
 	is : function(o, type) {
-		return Object.prototype.toString.call(o).toLowerCase() == "[object "+type+"]";
+		var t = Object.prototype.toString.call(o).toLowerCase().replace(/(\[object\s|\])/gi,'');
+		return type ? t == type : t;
+	},
+	
+	toArray: function(collection) {
+	
+		if(_.is(collection, 'array'))
+			return collection;
+		
+		var ret = [];
+		_.each(collection, function(o) {
+			ret.push(o);
+		});
+		
+		return ret;
 	},
 	
 	slice: function(arr, n) {
-		return Array.prototype.slice.call(arr, n);
+		return Array.prototype.slice.call(_.toArray(arr), n);
 	},
 	
 	each: function(obj, fn) {
 		if(!obj)
 			return;
 		
-		if(_.is(obj, 'array')) {
+		if(_.is(obj, 'array') || obj.length) {
 			if(obj.length == 0)
 				return;
 
@@ -29,8 +43,13 @@ var _ = {
 		}
 		else if(_.is(obj, 'object')) {
 			for(var key in obj) {
-				if(fn.call(obj, obj[key], key) === false)
-					return;
+				try {
+					if(obj.hasOwnProperty(key) && fn.call(obj, obj[key], key) === false)
+						return;
+				}catch(e) {
+					var ooo = obj;
+					//console.log('error', typeof obj);
+				}
 			}
 		}
 	},
@@ -75,6 +94,15 @@ var _ = {
 	},
 	
 	xhr: function(u, f, x) {
+	
+/*		var s = document.createElement('script');
+		s.onload = f;
+		s.src = u;
+		document.getElementsByTagName('head')[0].appendChild(s);
+		return;
+*/		if(/^http(s)?\:\/\//gi.test(u)) {
+			API.log('Add loader for external scripts', u);
+		}
 		x = this.ActiveXObject;
 		x = new(x ? x : XMLHttpRequest)('Microsoft.XMLHTTP');
 		x.open('GET', u, 1);
@@ -115,7 +143,7 @@ var Events = {
 	},
 	
 	trigger: function(ev) {
-		var self = this, args = _.slice(arguments), ret, i, l;
+		var self = this, args = _.slice(arguments, 1), ret, i, l;
 		
 		_.each(this._callbacks[ev], function(f, i) {
 			return f.apply(self, args);
@@ -154,6 +182,11 @@ var modul = window.modul = function(nm, fn, ref) {
 	if(_.is(nm, 'object'))
 		return modul.define(nm);
 	
+	if(modul.modules[nm] && modul.modules[nm].single && modul.instances[nm].length) {
+		fn && fn.apply(modul.instances[nm][0]);
+		return modul.instances[nm][0];
+	}
+
 	modul.require([nm], function() {
 		modul.module(nm, fn, ref);
 	});
@@ -165,7 +198,7 @@ _.extend(modul, {
 	
 	_domready: false,
 	
-	basepath: '',
+	basepath: null,
 	
 	require: function(src, fn) {
 		var self = this;
@@ -177,7 +210,7 @@ _.extend(modul, {
 			var unsolved = [];
 
 			_.each(src, function(s){
-				var dep = self.modules[s].extends;
+				var dep = self.modules[s]['inherits'];
 				_.each(dep, function(d) {
 					if(!self.modules[d])
 						unsolved.push(d);
@@ -202,6 +235,7 @@ _.extend(modul, {
 				url = self.basepath + s;
 				_.xhr(url.replace(/([\w]+?\/\.\.\/)+/gi, '') + (url.substr(-3) != '.js' ? '.js' : ''), function(t) {
 					self._nextload = s;
+//					eval(t);
 					if ( t && /\S/.test( t ) ) {
 						( window.execScript || function( d ) {
 							window[ "eval" ].call( window, d );
@@ -225,8 +259,8 @@ _.extend(modul, {
 		
 		if(this._nextload)
 			op.name = this._nextload;
-		
-		if(!op.name) {
+		console.log(op.name);
+/*		if(!op.name) {
 			_.each(_.slice(document.getElementsByTagName("head")[0].childNodes).reverse(), function(s) {
 				if(s.nodeName && s.nodeName.toLowerCase() == 'script' && s.getAttribute('data-modul') && !s.getAttribute('data-defined')) {
 					op.name = (s.getAttribute('src') || '').replace(self.basepath, '').replace(/\.js$/, '');
@@ -235,9 +269,7 @@ _.extend(modul, {
 				}
 			});
 		}
-		
-		console.log(op.name, this._nextload, op);
-		
+*/		
 		if(this.modules[op.name])
 			op.name += _.uid();
 
@@ -249,7 +281,7 @@ _.extend(modul, {
 	inherit: function(nm, req) {
 		var base = {}, self = this;
 		
-		_.each(this.modules[nm].extends, function( r ) {
+		_.each(this.modules[nm]['inherits'], function( r ) {
 			_.extend(base, self.inherit(r));
 		});
 		
@@ -258,20 +290,12 @@ _.extend(modul, {
 	
 	module: function(nm, fn, ref) {
 		
-		if(this.modules[nm].single && this.instances[nm].length) {
-			fn && fn.apply(this.instances[nm][0]);
-			return this.instances[nm][0];
-		}
-		
 		var ref = ref || {},
 			self = this, 
 			evnt,
 			args = _.slice(arguments, 1);
 		
-		_.extend(ref, this.inherit(nm, this.modules[nm]));
-		
-		// Convenience methods to handle DOM attachment/detachment
-		_.extend(ref, _.clone(Events), {
+		_.extend(ref, this.inherit(nm, this.modules[nm]), _.clone(Events), {
 			
 			uid: _.uid(),
 			
@@ -299,7 +323,7 @@ _.extend(modul, {
 					fn = ref[fn];
 				
 				// Standard DOM events, might be a nicer way of handling this.
-				if(ev.match(/^(on)?((dbl|double)?click|mouse(over|out|up|down|enter|leave|move)|key(down|press|up)|blur|focus(in|out)?|change|resize|scroll)/g) && typeof jQuery != 'undefined') {
+				if(typeof jQuery != 'undefined' && ev.match(/^(on)?((dbl|double)?click|mouse(over|out|up|down|enter|leave|move)|key(down|press|up)|blur|focus(in|out)?|change|resize|scroll)/g)) {
 					evnt = ev.split(' ');
 
 					// delegated to child elements
@@ -339,13 +363,149 @@ _.extend(modul, {
 		fn && fn.apply(ref);
 			
 		return ref;
+	},
+	
+	log: function() {
+		this.emit('log', _.slice(arguments));
+	}
+}, _.clone(Events));
+
+
+var /*History = function() {
+		_.bindAll(this, 'checkUrl');
+	},*/
+	routeStripper = /^[#\/]/,
+	isExplorer = /msie [\w.]+/,
+	historyStarted = false;
+
+var _history = _.extend({}, Events, { 
+	
+	interval: 50,
+
+	getFragment: function(fragment, forcePushState) {
+		if (fragment == null) {
+			if (this._hasPushState || forcePushState) {
+				fragment = window.location.pathname;
+				var search = window.location.search;
+				if (search) fragment += search;
+			} else {
+				fragment = window.location.hash;
+			}
+		}
+		fragment = decodeURIComponent(fragment);
+		if (!fragment.indexOf(this.options.root)) fragment = fragment.substr(this.options.root.length);
+		return fragment.replace(routeStripper, '');
+	},
+
+	start: function(options) {
+	
+		if (historyStarted) throw new Error("Backbone.history has already been started");
+
+		this.options = _.extend({}, {
+			root: '/'
+		}, this.options, options);
+
+		this._wantsHashChange = this.options.hashChange !== false;
+		this._wantsPushState = !! this.options.pushState;
+		this._hasPushState = !! (this.options.pushState && window.history && window.history.pushState);
+		var fragment = this.getFragment();
+		var docMode = document.documentMode;
+
+		var oldIE = (isExplorer.exec(navigator.userAgent.toLowerCase()) && (!docMode || docMode <= 7));
+
+		if (oldIE) {
+			var f = document.createElement('iframe');
+			f.src = 'javascript:0';// $('<iframe src="javascript:0" tabindex="-1" />').hide().appendTo('body')[0].contentWindow;
+			f.setAttribute('tabindex', '-1');
+			document.body.appendChild(f);
+			this.iframe = f.contentWindow;
+			this.navigate(fragment);
+		} 
+		
+		if (this._hasPushState) {
+			$(window).bind('popstate', this.checkUrl);
+		} else if (this._wantsHashChange && ('onhashchange' in window) && !oldIE) {
+			$(window).bind('hashchange', this.checkUrl);
+		} else if (this._wantsHashChange) {
+			this._checkUrlInterval = setInterval(this.checkUrl, this.interval);
+		} 
+		
+		this.fragment = fragment;
+		historyStarted = true;
+		var loc = window.location;
+		var atRoot = loc.pathname == this.options.root; 
+		
+		if (this._wantsHashChange && this._wantsPushState && !this._hasPushState && !atRoot) {
+			this.fragment = this.getFragment(null, true);
+			window.location.replace(this.options.root + '#' + this.fragment); 
+			
+			return true; 
+			
+		} else if (this._wantsPushState && this._hasPushState && atRoot && loc.hash) {
+			this.fragment = loc.hash.replace(routeStripper, '');
+			window.history.replaceState({}, document.title, loc.protocol + '//' + loc.host + this.options.root + this.fragment);
+		}
+		
+		if (!this.options.silent) {
+			return this.loadUrl();
+		}
+	},
+
+	checkUrl: function(e) {
+		var current = this.getFragment();
+		if (current == this.fragment && this.iframe) current = this.getFragment(this.iframe.location.hash);
+		if (current == this.fragment || current == decodeURIComponent(this.fragment)) return false;
+		if (this.iframe) this.navigate(current);
+		this.loadUrl() || this.loadUrl(window.location.hash);
+	},
+	
+	loadUrl: function(fragmentOverride) {
+		modul.emit("route", this.fragment = this.getFragment(fragmentOverride));
+		return true;
+	},
+	
+	navigate: function(fragment, options) {
+		if (!historyStarted) return false;
+		if (!options || options === true) options = {
+			trigger: options
+		};
+		var frag = (fragment || '').replace(routeStripper, '');
+		if (this.fragment == frag || this.fragment == decodeURIComponent(frag)) return; 
+		if (this._hasPushState) {
+			if (frag.indexOf(this.options.root) != 0) frag = this.options.root + frag;
+			this.fragment = frag;
+			window.history[options.replace ? 'replaceState' : 'pushState']({}, document.title, frag); 
+		} else if (this._wantsHashChange) {
+			this.fragment = frag;
+			this._updateHash(window.location, frag, options.replace);
+			if (this.iframe && (frag != this.getFragment(this.iframe.location.hash))) { 
+				if (!options.replace) this.iframe.document.open().close();
+				this._updateHash(this.iframe.location, frag, options.replace);
+			} 
+		} else {
+			window.location.assign(this.options.root + fragment);
+		}
+		if (options.trigger) this.loadUrl(fragment);
+	},
+
+	_updateHash: function(location, fragment, replace) {
+		if (replace) {
+			location.replace(location.toString().replace(/(javascript:|#).*$/, '') + '#' + fragment);
+		} else {
+			location.hash = fragment;
+		}
 	}
 });
 
-_.extend(modul, _.clone(Events));
-
 // Export _ for testing
 window._ = _;
+
+//var _history = new History();
+_.bindAll(_history);
+_history.start();
+modul.navigate = function(url, options) {
+	return _history.navigate(url, options);
+};
 
 (function (fn) {
 	if ( window.addEventListener ) {
@@ -369,15 +529,16 @@ window._ = _;
 
 // Figure out the modul basepath and check for main modul.
 _.each(_.slice(document.getElementsByTagName('script')), function(scr){
-	if(scr.src && scr.src.match(/modul\.js$/)) {
-		modul.basepath = scr.src.replace(/modul\.js$/, '');
+	if(scr.src && scr.getAttribute('src').match(/modul\.js$/)) {
+		// TODO: if this is loaded remotely, what happens with the basepath?
+		modul.basepath = scr.getAttribute('src').replace(/modul\.js$/, '');
 		if(scr.getAttribute('data-main'))
 			modul(scr.getAttribute('data-main'));
 		return false;
 	}
 });
 
-if(!modul.basepath)
+if(modul.basepath == null)
 	throw new Error("Can't figure out the basepath for modul.js, renamed the file?");
 
 })();
