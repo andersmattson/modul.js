@@ -6,7 +6,7 @@
 	<meta name="description" content="" />
   	<meta name="keywords" content="" />
 	<meta name="robots" content="" />
-	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1/jquery.min.js"></script>
+<!--	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1/jquery.min.js"></script>-->
 	<script data-main="mods/main" src="modul.js"></script>
 	<script type="text/javascript">
 
@@ -19,8 +19,8 @@
 			},
 			
 			receivers: {
-				'route': function(url){
-					$('<div />').html('route to '+url).appendTo("body");
+				'route': function(url) {
+					console.log('route to ' + url + ' from ' + this.name);
 				}
 			},
 			
@@ -28,26 +28,28 @@
 			custom: 'Det gick',
 			
 			init: function() {
-				modul.log('Init from main with name ' + this.name)
+				console.log('Init from main with name ' + this.name);
+				this.set('custom', 'Det gick bra');
 			},
 			
 			render: function() {
-				$(function(){
-					$(this.$el).html('Went ok, <a href="#go">go</a>').appendTo('body');
-				});
+				this.$el.innerHTML = this.get('custom');
+				document.body.appendChild(this.$el);
 			}
 		});
 		
 		var mod = modul('testfrommain', function(){
-			modul.log(this.name, this);
+			console.log('här', this.name, this);
+			this.render();
 		});
 		
 		setTimeout(function() {
-			modul.log('timeout',mod);
+			console.log('timeout',mod);
 		}, 1000);
 		
-		modul.receive('log', function(){
-			$('<div />').html('log: '+ _.slice(arguments).join()).appendTo("body");
+		modul.receive('log', function() {
+			console.log(_.slice(arguments).join());
+			//$('<div />').html('log: '+ _.slice(arguments).join()).appendTo("body");
 		});
 	</script>
 </head>

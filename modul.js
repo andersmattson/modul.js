@@ -95,13 +95,8 @@ var _ = {
 	
 	xhr: function(u, f, x) {
 	
-/*		var s = document.createElement('script');
-		s.onload = f;
-		s.src = u;
-		document.getElementsByTagName('head')[0].appendChild(s);
-		return;
-*/		if(/^http(s)?\:\/\//gi.test(u)) {
-			API.log('Add loader for external scripts', u);
+		if(/^http(s)?\:\/\//gi.test(u)) {
+			modul.log('Add loader for external scripts', u);
 		}
 		x = this.ActiveXObject;
 		x = new(x ? x : XMLHttpRequest)('Microsoft.XMLHTTP');
@@ -175,6 +170,41 @@ var Events = {
 	}
 };
 
+var Attributes = {
+	_attributes: {},
+	
+	_changedAttributes: {},
+	
+	get: function(key, def) {
+		return this._changedAttributes[key] !== undefined ? this._changedAttributes[key] : this._attributes[key] !== undefined ? this._attributes[key] : def;
+	},
+	
+	set: function(key, val) {
+		this._attributes[key] = val;
+		this.trigger('change:'+key, val).trigger('change', key, val);
+	},
+	
+	save: function(fn) {
+		_.extend(this._attributes, this._changedAttributes);
+		this.reset();
+	},
+	
+	reset: function() {
+		this._changedAttributes = {};
+	}
+};
+
+var DOMEvent = {
+	on: function(evnt, elem, func) {
+	    (elem.addEventListener) ? elem.addEventListener(evnt,func,false) : elem.attachEvent("on"+evnt, func);
+	},
+	
+	off: function(evnt, elem, func) {
+	    (elem.removeEventListener) ? elem.removeEventListener(evnt,func,false) : elem.detachEvent("on"+evnt, func);
+	}
+};
+
+
 var modul = window.modul = function(nm, fn, ref) {
 
 	ref = ref || {};
@@ -188,7 +218,11 @@ var modul = window.modul = function(nm, fn, ref) {
 	}
 
 	modul.require([nm], function() {
-		modul.module(nm, fn, ref);
+		if(modul.modules[nm] === true) {
+			fn && fn();
+		}
+		else
+			modul.module(nm, fn, ref);
 	});
 	
 	return ref;
@@ -233,18 +267,28 @@ _.extend(modul, {
 				!(--i) && fn();
 			else {
 				url = self.basepath + s;
-				_.xhr(url.replace(/([\w]+?\/\.\.\/)+/gi, '') + (url.substr(-3) != '.js' ? '.js' : ''), function(t) {
-					self._nextload = s;
-//					eval(t);
-					if ( t && /\S/.test( t ) ) {
-						( window.execScript || function( d ) {
-							window[ "eval" ].call( window, d );
-						} )( t );
+				if(url.substr(-3) == '.js') {
+					var js = document.createElement('script'); 
+					js.src = url;
+					js.onload = function() {
+						self.modules[s] = true;
+						!(--i) && fn();
 					}
-					self._nextload = null;
-
-					!(--i) && fn();
-				});
+					document.getElementsByTagName('head')[0].appendChild(js);
+				}
+				else {
+					_.xhr(url.replace(/([\w]+?\/\.\.\/)+/gi, '') + '.js', function(t) {
+						self._nextload = s;
+						if ( t && /\S/.test( t ) ) {
+							( window.execScript || function( d ) {
+								window[ "eval" ].call( window, d );
+							} )( '(function(){'+t+'})();' );
+						}
+						self._nextload = null;
+	
+						!(--i) && fn();
+					});
+				}
 			}
 		});
 	},
@@ -259,21 +303,11 @@ _.extend(modul, {
 		
 		if(this._nextload)
 			op.name = this._nextload;
-		console.log(op.name);
-/*		if(!op.name) {
-			_.each(_.slice(document.getElementsByTagName("head")[0].childNodes).reverse(), function(s) {
-				if(s.nodeName && s.nodeName.toLowerCase() == 'script' && s.getAttribute('data-modul') && !s.getAttribute('data-defined')) {
-					op.name = (s.getAttribute('src') || '').replace(self.basepath, '').replace(/\.js$/, '');
-					s.setAttribute('data-defined', '1');
-					return false;
-				}
-			});
-		}
-*/		
+
 		if(this.modules[op.name])
 			op.name += _.uid();
-
-		this.modules[op.name] = op;
+		
+		this.modules[op.name] = _.extend({}, op, _.clone(Events), _.clone(Attributes));
 		
 		return this;
 	},
@@ -295,10 +329,10 @@ _.extend(modul, {
 			evnt,
 			args = _.slice(arguments, 1);
 		
-		_.extend(ref, this.inherit(nm, this.modules[nm]), _.clone(Events), {
+		_.extend(ref, this.inherit(nm, this.modules[nm]), {
 			
 			uid: _.uid(),
-			
+						
 			$el: document.createElement(ref.tagName || 'div'),
 			
 			appendTo: function(el) {
@@ -347,6 +381,7 @@ _.extend(modul, {
 					
 				if(_.is(fn, 'string'))
 					fn = ref[fn];
+				
 				ref.receive(ev, fn);
 			});
 		}
@@ -415,7 +450,7 @@ var _history = _.extend({}, Events, {
 
 		if (oldIE) {
 			var f = document.createElement('iframe');
-			f.src = 'javascript:0';// $('<iframe src="javascript:0" tabindex="-1" />').hide().appendTo('body')[0].contentWindow;
+			f.src = 'javascript:0';
 			f.setAttribute('tabindex', '-1');
 			document.body.appendChild(f);
 			this.iframe = f.contentWindow;
@@ -423,9 +458,9 @@ var _history = _.extend({}, Events, {
 		} 
 		
 		if (this._hasPushState) {
-			$(window).bind('popstate', this.checkUrl);
+			DOMEvent.on('popstate', window, this.checkUrl);
 		} else if (this._wantsHashChange && ('onhashchange' in window) && !oldIE) {
-			$(window).bind('hashchange', this.checkUrl);
+			DOMEvent.on('hashchange', window, this.checkUrl);
 		} else if (this._wantsHashChange) {
 			this._checkUrlInterval = setInterval(this.checkUrl, this.interval);
 		} 
@@ -504,12 +539,12 @@ window._ = _;
 _.bindAll(_history);
 _history.start();
 modul.navigate = function(url, options) {
-	return _history.navigate(url, options);
+	return _history.navigate(url, !options);
 };
 
 (function (fn) {
 	if ( window.addEventListener ) {
-		document.addEventListener( 'DOMContentLoaded', function(){ fn(); }, false );
+		document.addEventListener( 'DOMContentLoaded', fn, false );
 	} else {
 		(function(){
 			if ( ! document.uniqueID && document.expando ) return;
@@ -532,8 +567,27 @@ _.each(_.slice(document.getElementsByTagName('script')), function(scr){
 	if(scr.src && scr.getAttribute('src').match(/modul\.js$/)) {
 		// TODO: if this is loaded remotely, what happens with the basepath?
 		modul.basepath = scr.getAttribute('src').replace(/modul\.js$/, '');
-		if(scr.getAttribute('data-main'))
-			modul(scr.getAttribute('data-main'));
+		modul.libversion = scr.getAttribute('data-version') || 1;
+		
+		if(!document.querySelectorAll) {
+			console.log('here');
+			// Load Sizzle
+			modul('sizzle.js', function() {
+				modul.select = function(sel, context) {
+					return Sizzle(sel, context || document);
+				}
+				if(scr.getAttribute('data-main'))
+					modul(scr.getAttribute('data-main'));
+			});
+		}
+		else {
+			modul.select = function(sel, context) {
+				return (context || document).querySelectorAll(sel);
+			}
+			if(scr.getAttribute('data-main'))
+				modul(scr.getAttribute('data-main'));
+		}
+		
 		return false;
 	}
 });
