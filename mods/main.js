@@ -11,6 +11,6 @@ modul({
 	},
 	
 	init: function() {
-		modul.log(this.msg, this);
+		console.log(this.msg, this);
 	}
 });

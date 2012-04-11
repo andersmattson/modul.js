@@ -1,0 +1,12 @@
+
+
+	* AMD loader or rather, inheritance (but loading external, local scripts works as well)
+	* Events (triggers, emit, receive)
+		* hashchange event
+		* DOM ready event
+	* Attributes (getters, setters, store, reset)
+	* DOM manipulation?
+	* Templates
+	* DOM Events?
+	* localStorage cache for external resources?
+	* 
