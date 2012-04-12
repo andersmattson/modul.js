@@ -126,7 +126,7 @@ var Events = {
 		var self = this;
 
 		if(fn) {
-			_.each(this._callbacks[ev], function(f, i){
+			_.each(this._callbacks[ev], function(f, i) {
 				if(f === fn)
 					self._callbacks[ev].splice(i,i);
 			});
@@ -537,7 +537,7 @@ window._ = _;
 
 //var _history = new History();
 _.bindAll(_history);
-_history.start();
+
 modul.navigate = function(url, options) {
 	return _history.navigate(url, !options);
 };
@@ -560,6 +560,7 @@ modul.navigate = function(url, options) {
 })(function () {
 	modul._domready = true;
 	modul.trigger('domready').emit('domready');
+	_history.start();
 });
 
 // Figure out the modul basepath and check for main modul.
@@ -569,12 +570,11 @@ _.each(_.slice(document.getElementsByTagName('script')), function(scr){
 		modul.basepath = scr.getAttribute('src').replace(/modul\.js$/, '');
 		modul.libversion = scr.getAttribute('data-version') || 1;
 		
-		if(!document.querySelectorAll) {
-			console.log('here');
-			// Load Sizzle
-			modul('sizzle.js', function() {
+		if(typeof jQuery == 'undefined') {
+			// Load jQuery
+			modul('http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js', function() {
 				modul.select = function(sel, context) {
-					return Sizzle(sel, context || document);
+					return $(sel, context || document);
 				}
 				if(scr.getAttribute('data-main'))
 					modul(scr.getAttribute('data-main'));
